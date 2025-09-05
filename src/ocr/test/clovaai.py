@@ -1,3 +1,5 @@
+# clovaai.py
+
 import os, sys, json
 import requests
 from io import BytesIO
@@ -6,12 +8,13 @@ import numpy as np
 import cv2
 import torch
 from json import JSONDecodeError
+from torchvision.transforms import InterpolationMode
 
 # CRAFT 소스 디렉터리를 sys.path에 추가
 CRAFT_SRC = r"D:\Codes\Project\NODGU\CRAFT-pytorch"          # CRAFT 소스 루트
 CRAFT_WEIGHT = r"D:\Codes\Project\NODGU\nodgu-data\craft_mlt_25k.pth"  # CRAFT 모델 가중치
 RECOG_SRC = r"D:\Codes\Project\NODGU\deep-text-recognition-benchmark"
-RECOG_WEIGHT = r"D:\Codes\Project\NODGU\nodgu-data\recognition_model_final.pth"
+RECOG_WEIGHT = r"D:\Codes\Project\NODGU\nodgu-data\recognition_model.pth"
 RECOG_OPT    = r"D:\Codes\Project\NODGU\nodgu-data\opt.json"
 
 API_URL = "https://api.nodgu.shop/api/v1/notice/notice/noOcrData"
@@ -67,20 +70,65 @@ def _warp_quad(rgb: np.ndarray, quad: np.ndarray, pad: int = 2) -> np.ndarray:
         crop = cv2.copyMakeBorder(crop, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(255,255,255))
     return crop
 
-def _bbox_from_poly(poly):
-    """폴리곤에서 AABB(bbox) [x1,y1,x2,y2]"""
-    xs = [p[0] for p in poly]
-    ys = [p[1] for p in poly]
-    return [int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))]
+def _box_to_xyxy_scalar(b):
+    """CRAFT box(리스트/ndarray/점 집합)를 [x1,y1,x2,y2] float로 정규화."""
+    arr = np.asarray(b, dtype=np.float32)
+    if arr.ndim == 1 and arr.size == 4:
+        x1, y1, x2, y2 = map(float, arr.tolist())
+    else:
+        # (N,2) 형태 등 → AABB로 변환
+        xs = arr[:, 0].astype(np.float32)
+        ys = arr[:, 1].astype(np.float32)
+        x1, y1, x2, y2 = float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())
+    return x1, y1, x2, y2
 
-def _sort_boxes_tblr(polys):
-    """텍스트 읽기 순서 정렬(위→아래, 좌→우). polys: list of 4점(또는 n점)"""
-    def key(p):
-        arr = np.array(p)
-        y = arr[:,1].mean()
-        x = arr[:,0].min()
-        return (int(round(y/10))*10, x)  # y를 버킷으로 묶어 줄바꿈 취급
-    return sorted(polys, key=key)
+def _sort_boxes(norm_boxes):
+    """
+    읽기 순서 정렬: '줄 단위 클러스터링 → 각 줄 내부 좌→우'
+    norm_boxes: [(x1, y1, x2, y2), ...]
+    return:     [(x1, y1, x2, y2), ...]  # 올바른 인덱스 순서
+    """
+    import numpy as np
+
+    if not norm_boxes:
+        return []
+
+    # 중앙 y, 높이 계산
+    items = []
+    heights = []
+    for x1, y1, x2, y2 in norm_boxes:
+        cy = (y1 + y2) / 2.0
+        h  = max(1.0, (y2 - y1))
+        heights.append(h)
+        items.append([float(x1), float(y1), float(x2), float(y2), float(cy)])
+
+    h_med = float(np.median(heights))
+    line_tol = max(12, int(h_med * 0.7))   # 필요하면 0.6~0.9 사이로 미세조정
+
+    # 1) 라인 클러스터링(위→아래)
+    lines = []  # list[list[item]]
+    for it in sorted(items, key=lambda t: (t[1], t[0])):  # y1, x1 1차 정렬
+        cy = it[4]
+        placed = False
+        for L in lines:
+            # 현재 라인의 대표 y(중앙)과 비교
+            L_cy = sum(p[4] for p in L) / len(L)
+            if abs(cy - L_cy) <= line_tol:
+                L.append(it)
+                placed = True
+                break
+        if not placed:
+            lines.append([it])
+
+    # 2) 라인 위→아래, 각 라인 내부 좌→우
+    lines.sort(key=lambda L: sum(p[4] for p in L) / len(L))
+    out = []
+    for L in lines:
+        L.sort(key=lambda p: p[0])  # x1
+        out += [(p[0], p[1], p[2], p[3]) for p in L]
+
+    return out
+
 
 
 ##### CRAFT #####
@@ -96,7 +144,9 @@ def load_craft(device="cpu"):
     model.to(device).eval()
     return model
 
-def craft_detect(net, image_rgb, device="cpu", text_thresh=0.7, link_thresh=0.4, low_text=0.4, canvas_size=1280, mag_ratio=1.5):
+def craft_detect(net, image_rgb, device="cpu",
+                 text_thresh=0.7, link_thresh=0.4, low_text=0.4,
+                 canvas_size=1280, mag_ratio=1.5):
     # PIL/np -> CRAFT 입력 전처리
     img_resized, target_ratio, size_heatmap = imgproc.resize_aspect_ratio(
         image_rgb, canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
@@ -112,23 +162,14 @@ def craft_detect(net, image_rgb, device="cpu", text_thresh=0.7, link_thresh=0.4,
     score_text = y[0, :, :, 0].cpu().data.numpy()
     score_link = y[0, :, :, 1].cpu().data.numpy()
 
-    # 박스/폴리곤 생성
-    boxes, polys = craft_utils.getDetBoxes(score_text, score_link, text_thresh, link_thresh, low_text, True)
+    # 박스만 반환 (poly=False)
+    boxes, _ = craft_utils.getDetBoxes(score_text, score_link,
+                                       text_thresh, link_thresh, low_text, poly=False)
+
     # 원본 좌표계로 복원
     boxes = craft_utils.adjustResultCoordinates(boxes, ratio_w, ratio_h)
-    polys = craft_utils.adjustResultCoordinates(polys, ratio_w, ratio_h)
-   
-    # polys가 None인 항목 fallback
-    if polys is None:
-        polys = [None]*len(boxes)
 
-    fixed_polys = []
-    for b, p in zip(boxes, polys):
-        if p is None:
-            p = np.array([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]], dtype=np.float32)
-        fixed_polys.append(p)
-    return boxes, fixed_polys
-
+    return boxes
 
 ##### text-recognition-benchmark #####
 
@@ -140,107 +181,206 @@ def _strip_module_prefix(state):
     new = OrderedDict((k.replace("module.", "", 1), v) for k, v in state.items())
     return new
 
+from PIL import Image
+from torchvision import transforms
+
 def _get_transform(imgH, imgW, rgb=True):
-    from PIL import Image
+    # Pillow 버전 호환용 resample 상수
+    try:
+        BICUBIC = Image.Resampling.BICUBIC   # Pillow>=9
+    except AttributeError:
+        BICUBIC = Image.BICUBIC              # Pillow<9
+
+    class KeepRatioResizePad(object):
+        def __init__(self, H, W, rgb):
+            self.H, self.W, self.rgb = H, W, rgb
+        def __call__(self, im: Image.Image):
+            # 모델 입력 채널에 맞게 변환
+            im = im.convert("RGB" if self.rgb else "L")
+
+            w, h = im.size
+            scale = min(self.W / max(1, w), self.H / max(1, h))
+            nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+            im_rs = im.resize((nw, nh), resample=BICUBIC)
+
+            bg = Image.new("RGB" if self.rgb else "L",
+                           (self.W, self.H),
+                           color=(0, 0, 0) if self.rgb else 0)  # 학습과 동일: 검은 배경
+            bg.paste(im_rs, ((self.W - nw) // 2, (self.H - nh) // 2))
+            return bg
+
     return transforms.Compose([
-        transforms.Resize((imgH, imgW), interpolation=Image.BICUBIC),
+        KeepRatioResizePad(imgH, imgW, rgb),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5]*(3 if rgb else 1),
-                             std=[0.5]*(3 if rgb else 1)),
+        transforms.Normalize(mean=[0.5] * (3 if rgb else 1),
+                             std=[0.5] * (3 if rgb else 1)),
     ])
+
+
+
+# 체크포인트에서 아키텍처 자동 추론
+def _infer_arch(state_no_module):
+    keys = list(state_no_module.keys())
+    has_tps  = any('GridGenerator' in k or 'LocalizationNetwork' in k for k in keys)
+    is_resnet = any('FeatureExtraction.ConvNet.layer1.0' in k for k in keys)
+    has_bilstm = any(k.startswith('SequenceModeling.') for k in keys)
+    is_attn = any(k.startswith('Prediction.attention_cell') for k in keys)
+
+    # 입력 채널 추정 (첫 conv weight shape: [out, in, k, k])
+    in_ch = None
+    for probe_key in ('FeatureExtraction.ConvNet.conv0_1.weight', 'FeatureExtraction.ConvNet.conv0.weight'):
+        if probe_key in state_no_module:
+            in_ch = state_no_module[probe_key].shape[1]
+            break
+    if in_ch is None:
+        # 백업: 다른 키라도 찾아본다
+        for k, v in state_no_module.items():
+            if k.endswith('conv0_1.weight') and v.ndim == 4:
+                in_ch = v.shape[1]
+                break
+    in_ch = 1 if in_ch == 1 else 3  # 기본 3
+
+    # num_class 추정 (generator.weight [num_class, hidden])
+    num_class = None
+    for k in ('Prediction.generator.weight', ):
+        if k in state_no_module:
+            num_class = state_no_module[k].shape[0]
+            break
+
+    arch = {
+        'Transformation': 'TPS' if has_tps else 'None',
+        'FeatureExtraction': 'ResNet' if is_resnet else 'VGG',
+        'SequenceModeling': 'BiLSTM' if has_bilstm else 'None',
+        'Prediction': 'Attn' if is_attn else 'CTC',
+        'input_channel': in_ch,
+        'num_class_from_ckpt': num_class
+    }
+    return arch
 
 # 인식기 loader
 def load_textrec(device="cpu"):
     import types
-    # opt/character 로드
+
+    # 1) opt/charset 읽기
     opt = json.load(open(RECOG_OPT, "r", encoding="utf-8"))
-    character = opt["character"]               # opt.json에서 읽음
-    is_attn = opt.get("Prediction", "Attn").lower() != "ctc"
-    # 모델이 기대하는 클래스 수
-    num_class_from_opt = (len(character) + 1) if is_attn else len(character)
+    orig_character = opt["character"]              # 문자열(권장) 또는 문자열 유사 객체
+    if not isinstance(orig_character, str):
+        # 혹시 리스트로 저장돼 있으면 문자열로 환원
+        orig_character = "".join(orig_character)
+    raw_state = torch.load(RECOG_WEIGHT, map_location=device)
 
-    # converter & num_class
-    if opt.get("Prediction", "Attn").lower() == "ctc":
-        converter = CTCLabelConverter(character)
-        num_class = len(converter.character)
-    else:
-        converter = AttnLabelConverter(character)
-        num_class = len(converter.character) + 1  # [EOS]
+    # 2) 프리픽스 제거
+    state = _strip_module_prefix(raw_state)
 
-    state = torch.load(RECOG_WEIGHT, map_location=device)
-
+    # 3) ckpt에서 실측 치수 추출
+    #   - LSTM Attn: weight_ih.shape = [4H, H+K], weight_hh.shape=[4H, H], generator.weight.shape=[K, hidden]
     try:
-        ckpt_num_class = state["Prediction.generator.weight"].shape[0]
+        w_ih = state["Prediction.attention_cell.rnn.weight_ih"]
+        w_hh = state["Prediction.attention_cell.rnn.weight_hh"]
+        hidden_size_ckpt = w_hh.shape[1]
+        num_class_from_rnn = w_ih.shape[1] - hidden_size_ckpt
     except KeyError:
-        # 혹은 다른 키로 저장된 경우를 대비
-        for k, v in state.items():
-            if k.endswith("Prediction.generator.weight"):
-                ckpt_num_class = v.shape[0]
-                break
-        else:
-            ckpt_num_class = None
+        w_ih = None
+        hidden_size_ckpt = int(opt.get("hidden_size", 256))
+        num_class_from_rnn = None
 
-    # ★ ckpt와 불일치하면 ckpt 기준으로 옵션 보정
-    if ckpt_num_class is not None and ckpt_num_class != num_class_from_opt:
-        print(f"[WARN] checkpoint num_class={ckpt_num_class}, opt/charset num_class={num_class_from_opt}. "
-            f"모델을 checkpoint 기준으로 보정합니다.")
-        if is_attn:
-            # EOS 포함 ⇒ character 길이는 ckpt_num_class - 1 이어야 함
-            target_len = ckpt_num_class - 1
-        else:
-            target_len = ckpt_num_class
-
-        # 길이를 맞춤 (순서 불일치 시 성능 저하 가능)
-        if len(character) > target_len:
-            character = character[:target_len]
-        elif len(character) < target_len:
-            character = character + ("▢" * (target_len - len(character)))  # 더미 채움 (권장X)
-
-    # 이후 converter, ModelOpt 생성 시 num_class는 character 길이에 맞춰 설정
-    if is_attn:
-        converter = AttnLabelConverter(character)
-        num_class = len(converter.character) + 1
-    else:
-        converter = CTCLabelConverter(character)
-        num_class = len(converter.character)
-        
-    rgb = bool(opt.get("rgb", True))
-    input_channel = int(opt.get("input_channel", 3 if rgb else 1))
-    # conv 첫 레이어 키로 판단
-    first_conv_key = "FeatureExtraction.ConvNet.conv0_1.weight"
-    if first_conv_key in state and state[first_conv_key].shape[1] == 1:
-        rgb = False
-        input_channel = 1
-
-    # ModelOpt에 반영
-    ModelOpt = types.SimpleNamespace(
-        imgH=int(opt.get("imgH", 32)),
-        imgW=int(opt.get("imgW", 100)),
-        rgb=rgb,
-        Transformation=opt.get("Transformation", "TPS"),
-        FeatureExtraction=opt.get("FeatureExtraction", "ResNet"),
-        SequenceModeling=opt.get("SequenceModeling", "BiLSTM"),
-        Prediction=opt.get("Prediction", "Attn"),
-        num_fiducial=int(opt.get("num_fiducial", 20)),
-        input_channel=input_channel,               # ← 보정된 채널 수
-        output_channel=int(opt.get("output_channel", 512)),
-        hidden_size=int(opt.get("hidden_size", 256)),
-        max_len=int(opt.get("max_len", 25)),
-        num_class=num_class,
-        batch_max_length=int(opt.get("max_len", 25)),
-    )
-
-    model = Model(ModelOpt)
-    model.load_state_dict(state, strict=True)
-    
     try:
-        model.load_state_dict(state, strict=True)
-    except RuntimeError:
-        model.load_state_dict(_strip_module_prefix(state), strict=True)
+        num_class_from_gen = state["Prediction.generator.weight"].shape[0]
+    except KeyError:
+        num_class_from_gen = None
 
-    model.to(device).eval()
-    tfm = _get_transform(ModelOpt.imgH, ModelOpt.imgW, ModelOpt.rgb)
-    return model, converter, ModelOpt, tfm
+    # 최종 num_class는 ckpt 기준(가능하면)
+    candidates = [c for c in [num_class_from_rnn, num_class_from_gen] if c is not None]
+    if candidates:
+        num_class_ckpt = min(candidates)  # 일반적으로 둘이 동일
+    else:
+        # 백업(권장X)
+        is_attn_opt = opt.get("Prediction", "Attn").lower() != "ctc"
+        num_class_ckpt = (len(orig_character) + 1) if is_attn_opt else len(orig_character)
+        print("[WARN] ckpt에서 num_class를 유추 못해 opt 기반으로 설정:", num_class_ckpt)
+
+    # 4) 아키텍처/입력채널 추론
+    arch = _infer_arch(state)
+    is_attn = (arch['Prediction'].lower() == 'attn')
+    rgb = (arch['input_channel'] == 3)
+
+    # 5) 특수토큰 갭 가설 k ∈ {1, 0, 2} 순차 시도
+    #    k=1: 원 레포 규칙(len(charset)+1 == num_class)
+    #    k=0: 특수토큰을 charset에 이미 포함시킨 포크
+    #    k=2: charset에 [GO]와 [s]가 둘 다 포함된 포크
+    def _build_converter(charset_str, attn=True, k_gap=1):
+        # 목표 charset 길이
+        target_len = max(1, num_class_ckpt - k_gap)
+        ch = charset_str
+        if len(ch) > target_len:
+            ch = ch[:target_len]
+        elif len(ch) < target_len:
+            ch = ch + ("▢" * (target_len - len(ch)))  # 임시 채움(가능하면 실제 학습 charset 사용 권장)
+
+        if attn:
+            conv = AttnLabelConverter(ch)
+            # 모델의 num_class는 ckpt 수치 고정(=num_class_ckpt)
+            final_num_class = num_class_ckpt
+        else:
+            conv = CTCLabelConverter(ch)
+            final_num_class = num_class_ckpt
+
+        return ch, conv, final_num_class
+
+    def _make_model_and_try(k_gap):
+        # ModelOpt 구성
+        ch, converter, final_num_class = _build_converter(orig_character, attn=is_attn, k_gap=k_gap)
+        ModelOpt = types.SimpleNamespace(
+            imgH=int(opt.get("imgH", 32)),
+            imgW=int(opt.get("imgW", 100)),
+            rgb=rgb,
+            Transformation=arch['Transformation'],
+            FeatureExtraction=arch['FeatureExtraction'],
+            SequenceModeling=arch['SequenceModeling'],
+            Prediction=arch['Prediction'],
+            num_fiducial=int(opt.get("num_fiducial", 20)),
+            input_channel=arch['input_channel'],
+            output_channel=int(opt.get("output_channel", 512)),
+            hidden_size=hidden_size_ckpt if hidden_size_ckpt is not None else int(opt.get("hidden_size", 256)),
+            max_len=int(opt.get("max_len", 25)),
+            num_class=final_num_class,                 # ← ckpt 기준 고정
+            batch_max_length=int(opt.get("max_len", 25)),
+        )
+        print(f"[INFO] 시도(k={k_gap}) → Pred={ModelOpt.Prediction}, in_ch={ModelOpt.input_channel}, "
+              f"hidden={ModelOpt.hidden_size}, num_class={ModelOpt.num_class}, charset_len={len(converter.character)}")
+
+        model = Model(ModelOpt).to(device)
+        try:
+            # 먼저 strict=True 시도
+            model.load_state_dict(state, strict=True)
+            print(f"[OK] strict=True 로드 성공 (k={k_gap})")
+            return model, converter, ModelOpt
+        except Exception as e_true:
+            print(f"[INFO] strict=True 실패 (k={k_gap}) → {e_true}")
+            try:
+                # strict=False 재시도 → 성공하면 사용 (헤드 일부 재초기화 필요할 수 있음)
+                model.load_state_dict(state, strict=False)
+                print(f"[OK] strict=False 로드 (k={k_gap})")
+                return model, converter, ModelOpt
+            except Exception as e_false:
+                print(f"[NG] strict=False도 실패 (k={k_gap}) → {e_false}")
+                return None, None, None
+
+    # k 순서대로 시도
+    tried = []
+    for k_gap in (1, 0, 2):
+        model, converter, ModelOpt = _make_model_and_try(k_gap)
+        tried.append(k_gap)
+        if model is not None:
+            # 최종 성공
+            tfm = _get_transform(ModelOpt.imgH, ModelOpt.imgW, ModelOpt.rgb)
+            model.eval()
+            return model, converter, ModelOpt, tfm
+
+    # 모두 실패 시 마지막 시도 정보 출력 후 예외
+    raise RuntimeError(f"Attn num_class/charset 조합 자동탐색 실패: 시도한 k={tried}, "
+                       f"ckpt_num_class={num_class_ckpt}, hidden={hidden_size_ckpt}")
+ 
 
 # 인식 함수(one, batch)
 @torch.no_grad()
@@ -293,72 +433,67 @@ def recog_text(crops, model_pack=None, device="cpu"):
 
 
 ##### 파이프라인: 감지 → 크롭 → 인식 → 시각화 #####
-def detect_and_recognize(image_rgb: np.ndarray, craft_model, textrec_pack, device="cpu",
+def detect_and_recognize(image_rgb: np.ndarray,
+                         craft_model, textrec_pack, device="cpu",
                          text_thresh=0.7, link_thresh=0.4, low_text=0.4,
                          viz: bool = True, conf_thr: float = 0.0):
-    """
-    반환:
-    results = [
-        {"poly": [[x,y],...4개], "bbox":[x1,y1,x2,y2], "text": str, "conf": float}
-    ], viz_img(RGB, np.ndarray)
-    """
+
     H, W = image_rgb.shape[:2]
-    boxes, polys = craft_detect(
+    boxes = craft_detect(
         craft_model, image_rgb, device=device,
         text_thresh=text_thresh, link_thresh=link_thresh, low_text=low_text
     )
 
-    # 정렬(위→아래, 좌→우)
-    polys = _sort_boxes_tblr(polys)
+    norm_boxes = []
+    for b in boxes:
+        x1, y1, x2, y2 = _box_to_xyxy_scalar(b)
+        # 클리핑 및 int 변환은 나중에
+        norm_boxes.append((x1, y1, x2, y2))
 
-    # 폴리곤 기준 크롭(가능하면 퍼스펙티브 보정, 아니면 AABB)
+    norm_boxes = _sort_boxes(norm_boxes)
+
     crops = []
     meta  = []
-    for p in polys:
-        p_np = np.array(p, dtype=np.float32)
-        if len(p_np) >= 4:
-            quad = p_np[:4]  # CRAFT는 보통 4점
-            crop = _warp_quad(image_rgb, quad, pad=2)
-            bbox = _bbox_from_poly(p)
-        else:
-            # fallback: 사각
-            bbox = _bbox_from_poly(p)
-            x1, y1, x2, y2 = bbox
-            x1 = max(0, min(x1, W-1)); x2 = max(0, min(x2, W-1))
-            y1 = max(0, min(y1, H-1)); y2 = max(0, min(y2, H-1))
-            crop = image_rgb[y1:y2, x1:x2, :]
+    for x1, y1, x2, y2 in norm_boxes:
+        # ★ 클리핑 + int
+        x1 = max(0, min(int(x1), W-1)); x2 = max(0, min(int(x2), W-1))
+        y1 = max(0, min(int(y1), H-1)); y2 = max(0, min(int(y2), H-1))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        crop = image_rgb[y1:y2, x1:x2, :]
         if crop.size == 0:
             continue
         crops.append(crop)
-        meta.append({"poly": p, "bbox": _bbox_from_poly(p)})
+        meta.append({"bbox": [x1, y1, x2, y2]})
 
     if not crops:
         return [], image_rgb.copy()
 
-    # 배치 인식
     recs = recog_text(crops, model_pack=textrec_pack, device=device)
     results = []
     for m, r in zip(meta, recs):
         if r["conf"] >= conf_thr:
             results.append({
-                "poly": [list(map(float, pt)) for pt in m["poly"]],
-                "bbox": list(map(int, m["bbox"])),
+                "bbox": m["bbox"],
                 "text": r["text"],
                 "conf": float(r["conf"]),
             })
 
-    # 시각화(선택)
     viz_img = image_rgb.copy()
     if viz:
-        for it in results:
-            poly = np.array(it["poly"], dtype=np.int32)
-            cv2.polylines(viz_img, [poly], isClosed=True, color=(255, 0, 0), thickness=2)
+        for i, it in enumerate(results, 1):
             x1,y1,x2,y2 = it["bbox"]
-            label = f'{it["text"]} ({it["conf"]:.2f})'
-            # 텍스트 배경
-            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-            cv2.rectangle(viz_img, (x1, y1 - th - 6), (x1 + tw + 4, y1), (0,0,0), -1)
-            cv2.putText(viz_img, label, (x1+2, y1-4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1, cv2.LINE_AA)
+            cv2.rectangle(viz_img, (x1,y1), (x2,y2), (255,0,0), 2)
+            
+            idx_text = str(i)
+            font       = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.6
+            thickness  = 1
+
+            tx = x1 + 2
+            ty = max(10, y1 - 4) 
+            cv2.putText(viz_img, idx_text, (tx, ty), font, font_scale, (0, 0, 0), thickness + 1, cv2.LINE_AA)
+            cv2.putText(viz_img, idx_text, (tx, ty), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
     return results, viz_img
 

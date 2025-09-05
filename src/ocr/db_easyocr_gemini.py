@@ -1,3 +1,5 @@
+# db_easyocr_gemini.py
+ 
 import easyocr
 import requests
 from io import BytesIO
