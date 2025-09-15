@@ -5,3 +5,12 @@ google-generativeai
 pillow
 easyocr
 opencv-python
+easyocr
+google-generativeai
+python-dotenv
+easyocr
+# torch==2.3.1
+# torchvision>=0.18.0
+# opencv-python
+# scikit-image
+# scipy
