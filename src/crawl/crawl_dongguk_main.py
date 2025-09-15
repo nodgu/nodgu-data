@@ -162,7 +162,8 @@ def crawl_main_notices():
                             if href.startswith("javascript:downGO("):
                                 parts = href[len("javascript:downGO(") : -1].split("','")
                                 if len(parts) >= 3:
-                                    down_file = f"/cmmn/fileDown.do?filename={parts[0]}&filepath={parts[1]}&filerealname={parts[2].replace("')", "")}"
+                                    temp = parts[2].replace("')", "")
+                                    down_file = f"/cmmn/fileDown.do?filename={parts[0]}&filepath={parts[1]}&filerealname={temp}"
                             if down_file != "":
                                 attachments.append(
                                     {
