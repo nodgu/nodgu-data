@@ -1,3 +1,7 @@
 requests
 bs4
 dotenv
+google-generativeai
+pillow
+easyocr
+opencv-python
