@@ -68,16 +68,6 @@ def find_food(base_css, start_idx):
 base_url = "https://dgucoop.dongguk.edu"
 url = base_url + "/store/store.php?w=4&l=2&j={}"
 
-restaurants = ["SANGNOK1", "SANGNOK2", "SANGNOK3", "koyang", "DFLEX", "NAMSAN"]
-restaurant_id = {
-    "SANGNOK1": 1,
-    "SANGNOK2": 2,
-    "SANGNOK3": 3,
-    "koyang": 4,
-    "DFLEX": 5,
-    "NAMSAN": 6,
-}
-
 options = Options()
 options.add_argument("--headless")
 driver = webdriver.Chrome(options=options)
@@ -93,7 +83,14 @@ last_week_date = 20090830
 driver.quit()
 
 foods = []
+_seen = set()
+
 def to_food(restaurant_id, date, time, corner, activated, food):
+    key = (restaurant_id, date, time, corner, tuple(food) if isinstance(food, list) else food)
+    if key in _seen:
+        return
+    _seen.add(key)
+
     menu = {
         "restaurant_id": restaurant_id,
         "date": date,
@@ -104,6 +101,316 @@ def to_food(restaurant_id, date, time, corner, activated, food):
     }
     foods.append(menu)
 
+# restaurant마다
+def sangnok3():
+    print('---------- SANGNOK3 ----------')
+    sangnok3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(2) > td')
+    sangnok3_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(3) > td:nth-of-type(1)')
+
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(3) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok3_corner1_lunch, _ = find_food(base_css, 1)
+
+    sangnok3_corner1_lunch_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(3) > td:nth-of-type(2)')
+    to_food(3, today,
+            sangnok3_corner1_lunch_time_el.get_text(strip=True) if sangnok3_corner1_lunch_time_el else None,
+            sangnok3_corner1_name_el.get_text(strip=True) if sangnok3_corner1_name_el else None,
+            None,
+            sangnok3_corner1_lunch)
+
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(4) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    sangnok3_corner1_dinner, _ = find_food(base_css, 1)
+    sangnok3_corner1_dinner_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(4) > td:nth-of-type(1)')
+    to_food(3, today,
+            sangnok3_corner1_dinner_time_el.get_text(strip=True) if sangnok3_corner1_dinner_time_el else None,
+            sangnok3_corner1_name_el.get_text(strip=True) if sangnok3_corner1_name_el else None,
+            None,
+            sangnok3_corner1_dinner)
+    
+    sangnok3_corner2_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok3_corner2_lunch, _ = find_food(base_css, 1)
+    sangnok3_corner2_lunch_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type(2)')
+
+    sangnok3_corner2_lunch_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    )
+    sangnok3_corner2_lunch_act_txt = nth_text_of(sangnok3_corner2_lunch_act_el, _)
+    sangnok3_corner2_lunch_act = f"중식: {sangnok3_corner2_lunch_act_txt[2:]}" if sangnok3_corner2_lunch_act_txt else None
+
+    to_food(3, today,
+            sangnok3_corner2_lunch_time_el.get_text(strip=True) if sangnok3_corner2_lunch_time_el else None,
+            sangnok3_corner2_name_el.get_text(strip=True) if sangnok3_corner2_name_el else None,
+            sangnok3_corner2_lunch_act,
+            sangnok3_corner2_lunch)
+
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(6) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    sangnok3_corner2_dinner, _ = find_food(base_css, 1)
+    sangnok3_corner2_dinner_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(6) > td:nth-of-type(1)')
+
+    sangnok3_corner2_dinner_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(6) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    )
+    sangnok3_corner2_dinner_act_txt = nth_text_of(sangnok3_corner2_dinner_act_el, _)
+    sangnok3_corner2_dinner_act = f"석식: {sangnok3_corner2_dinner_act_txt[2:]}" if sangnok3_corner2_dinner_act_txt else None
+
+    to_food(3, today,
+            sangnok3_corner2_dinner_time_el.get_text(strip=True) if sangnok3_corner2_dinner_time_el else None,
+            sangnok3_corner2_name_el.get_text(strip=True) if sangnok3_corner2_name_el else None,
+            sangnok3_corner2_dinner_act,
+            sangnok3_corner2_dinner)
+
+def sangnok2():
+    print('---------- SANGNOK2 ----------')
+    sangnok2_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(8) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(8) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok2_corner1_lunch, _ = find_food(base_css, 1)
+
+    sangnok2_corner1_lunch_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(8) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner1_lunch_act = nth_text_of(sangnok2_corner1_lunch_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner1_name_el.get_text(strip=True) if sangnok2_corner1_name_el else None,
+            sangnok2_corner1_lunch_act,
+            sangnok2_corner1_lunch)
+
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(9) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    sangnok2_corner1_dinner, _ = find_food(base_css, 1)
+
+    sangnok2_corner1_dinner_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(9) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner1_dinner_act = nth_text_of(sangnok2_corner1_dinner_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner1_name_el.get_text(strip=True) if sangnok2_corner1_name_el else None,
+            sangnok2_corner1_dinner_act,
+            sangnok2_corner1_dinner)
+    
+    sangnok2_corner2_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(10) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(10) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok2_corner2_lunch, _ = find_food(base_css, 1)
+
+    sangnok2_corner2_lunch_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(10) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner2_lunch_act = nth_text_of(sangnok2_corner2_lunch_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner2_name_el.get_text(strip=True) if sangnok2_corner2_name_el else None,
+            sangnok2_corner2_lunch_act,
+            sangnok2_corner2_lunch)
+    
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(11) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    sangnok2_corner2_dinner, _ = find_food(base_css, 1)
+
+    sangnok2_corner2_dinner_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(11) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner2_dinner_act = nth_text_of(sangnok2_corner2_dinner_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner2_name_el.get_text(strip=True) if sangnok2_corner2_name_el else None,
+            sangnok2_corner2_dinner_act,
+            sangnok2_corner2_dinner)
+
+    sangnok2_corner3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(12) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(12) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok2_corner3_lunch, _ = find_food(base_css, 1)
+
+    sangnok2_corner3_lunch_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(12) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner3_lunch_act = nth_text_of(sangnok2_corner3_lunch_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner3_name_el.get_text(strip=True) if sangnok2_corner3_name_el else None,
+            sangnok2_corner3_lunch_act,
+            sangnok2_corner3_lunch)
+    
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(13) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    sangnok2_corner3_dinner, _ = find_food(base_css, 1)
+
+    sangnok2_corner3_dinner_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(13) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner3_dinner_act = nth_text_of(sangnok2_corner3_dinner_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner3_name_el.get_text(strip=True) if sangnok2_corner3_name_el else None,
+            sangnok2_corner3_dinner_act,
+            sangnok2_corner3_dinner)
+
+    sangnok2_corner4_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(14) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(14) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok2_corner4_lunch, _ = find_food(base_css, 1)
+
+    sangnok2_corner4_lunch_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(14) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner4_lunch_act = nth_text_of(sangnok2_corner4_lunch_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner4_name_el.get_text(strip=True) if sangnok2_corner4_name_el else None,
+            sangnok2_corner4_lunch_act,
+            sangnok2_corner4_lunch)
+    
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(15) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    sangnok2_corner4_dinner, _ = find_food(base_css, 1)
+
+    sangnok2_corner4_dinner_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(15) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    )
+    sangnok2_corner4_dinner_act = nth_text_of(sangnok2_corner4_dinner_act_el, 1)
+
+    to_food(2, today, "중석식",
+            sangnok2_corner4_name_el.get_text(strip=True) if sangnok2_corner4_name_el else None,
+            sangnok2_corner4_dinner_act,
+            sangnok2_corner4_dinner)
+
+def sangnok1():
+    print('---------- SANGNOK1 ----------')
+    sangnok1_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(17) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(17) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok1_corner1, _ = find_food(base_css, 1)
+
+    sangnok1_corner1_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(17) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok1_corner1_act = nth_text_of(sangnok1_corner1_act_el, 1)
+
+    to_food(1, today, "중석식",
+            sangnok1_corner1_name_el.get_text(strip=True) if sangnok1_corner1_name_el else None,
+            sangnok1_corner1_act,
+            sangnok1_corner1)
+
+    sangnok1_corner2_name_cell_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(18) > td:nth-of-type(2) > span:nth-of-type(1)')
+    sangnok1_corner2_name_txt = nth_text_of(sangnok1_corner2_name_cell_el, 1)
+    sangnok1_corner2_name = sangnok1_corner2_name_txt[4:-5] if sangnok1_corner2_name_txt else None
+
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(18) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok1_corner2, _ = find_food(base_css, 1)
+
+    sangnok1_corner2_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(18) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok1_corner2_act = nth_text_of(sangnok1_corner2_act_el, 1)
+
+    to_food(1, today, "중석식",
+            sangnok1_corner2_name,
+            sangnok1_corner2_act,
+            sangnok1_corner2)
+
+    sangnok1_corner3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(19) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(19) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok1_corner3, _ = find_food(base_css, 1)
+
+    sangnok1_corner3_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(19) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok1_corner3_act = nth_text_of(sangnok1_corner3_act_el, 1)
+
+    to_food(1, today, "중석식",
+            sangnok1_corner3_name_el.get_text(strip=True) if sangnok1_corner3_name_el else None,
+            sangnok1_corner3_act,
+            sangnok1_corner3)
+
+    sangnok1_corner4_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(20) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(20) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok1_corner4, _ = find_food(base_css, 1)
+
+    sangnok1_corner4_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(20) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok1_corner4_act = nth_text_of(sangnok1_corner4_act_el, 1)
+
+    to_food(1, today, "중석식",
+            sangnok1_corner4_name_el.get_text(strip=True) if sangnok1_corner4_name_el else None,
+            sangnok1_corner4_act,
+            sangnok1_corner4)
+
+    sangnok1_corner5_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(21) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(21) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok1_corner5, _ = find_food(base_css, 1)
+
+    sangnok1_corner5_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(21) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok1_corner5_act = nth_text_of(sangnok1_corner5_act_el, 1)
+
+    to_food(1, today, "중석식",
+            sangnok1_corner5_name_el.get_text(strip=True) if sangnok1_corner5_name_el else None,
+            sangnok1_corner5_act,
+            sangnok1_corner5)
+
+    sangnok1_corner6_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(22) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(22) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok1_corner6, _ = find_food(base_css, 1)
+
+    sangnok1_corner6_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(22) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok1_corner6_act = nth_text_of(sangnok1_corner6_act_el, 1)
+
+    to_food(1, today, "중석식",
+            sangnok1_corner6_name_el.get_text(strip=True) if sangnok1_corner6_name_el else None,
+            sangnok1_corner6_act,
+            sangnok1_corner6)
+
+    sangnok1_corner7_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(23) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(23) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    sangnok1_corner7, _ = find_food(base_css, 1)
+
+    sangnok1_corner7_act_el = soup.select_one(
+        f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(23) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    )
+    sangnok1_corner7_act = nth_text_of(sangnok1_corner7_act_el, 1)
+
+    to_food(1, today, "중석식",
+            sangnok1_corner7_name_el.get_text(strip=True) if sangnok1_corner7_name_el else None,
+            sangnok1_corner7_act,
+            sangnok1_corner7)
+    
+def koyang():
+    print('---------- KOYANG ----------')
+    koyang_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(25) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(25) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    koyang_corner1, _ = find_food(base_css, 1)
+    to_food(4, today, None,
+            koyang_corner1_name_el.get_text(strip=True) if koyang_corner1_name_el else None,
+            None, koyang_corner1)
+    
+    koyang_corner2_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(26) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(26) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
+    koyang_corner2_lunch, _ = find_food(base_css, 1)
+    to_food(4, today, None,
+            koyang_corner2_name_el.get_text(strip=True) if koyang_corner2_name_el else None,
+            None, koyang_corner2_lunch)
+
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(27) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    koyang_corner2_dinner, _ = find_food(base_css, 1)
+    to_food(4, today, None,
+            koyang_corner2_name_el.get_text(strip=True) if koyang_corner2_name_el else None,
+            None, koyang_corner2_dinner)
+    
+    koyang_corner3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(28) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(28) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    koyang_corner3, _ = find_food(base_css, 1)
+    to_food(4, today, None,
+            koyang_corner3_name_el.get_text(strip=True) if koyang_corner3_name_el else None,
+            None, koyang_corner3)
+
+    koyang_corner4_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(29) > td:nth-of-type(1)')
+    base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(29) > td:nth-of-type({i}) > span:nth-of-type(1)'
+    koyang_corner4, _ = find_food(base_css, 1)
+    to_food(4, today, None,
+            koyang_corner4_name_el.get_text(strip=True) if koyang_corner4_name_el else None,
+            None, koyang_corner4)
+
+
+
+# main
 while True:
     print(f"{idx}")
     print(f"Fetching Url: {url}")
@@ -111,7 +418,7 @@ while True:
     foods = []
 
     if response.status_code == 200:
-        html = response.text
+        html = response.content.decode("cp949", errors="ignore")
         global soup
         soup = BeautifulSoup(html, "html.parser")
 
@@ -129,312 +436,11 @@ while True:
         for i in range(2, 9):
             today = (week_start + timedelta(days=i-2)).strftime("%Y-%m-%d")
             print(today)
-            
-            print('---------- SANGNOK3 ----------')
-            sangnok3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(2) > td')
-            sangnok3_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(3) > td:nth-of-type(1)')
 
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(3) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok3_corner1_lunch, _ = find_food(base_css, 1)
-
-            sangnok3_corner1_lunch_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(3) > td:nth-of-type(2)')
-            to_food(3, today,
-                    sangnok3_corner1_lunch_time_el.get_text(strip=True) if sangnok3_corner1_lunch_time_el else None,
-                    sangnok3_corner1_name_el.get_text(strip=True) if sangnok3_corner1_name_el else None,
-                    None,
-                    sangnok3_corner1_lunch)
-
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(4) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            sangnok3_corner1_dinner, _ = find_food(base_css, 1)
-            sangnok3_corner1_dinner_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(4) > td:nth-of-type(1)')
-            to_food(3, today,
-                    sangnok3_corner1_dinner_time_el.get_text(strip=True) if sangnok3_corner1_dinner_time_el else None,
-                    sangnok3_corner1_name_el.get_text(strip=True) if sangnok3_corner1_name_el else None,
-                    None,
-                    sangnok3_corner1_dinner)
-            
-            sangnok3_corner2_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok3_corner2_lunch, _ = find_food(base_css, 1)
-            sangnok3_corner2_lunch_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type(2)')
-
-            sangnok3_corner2_lunch_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(5) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            )
-            sangnok3_corner2_lunch_act_txt = nth_text_of(sangnok3_corner2_lunch_act_el, _)
-            sangnok3_corner2_lunch_act = f"중식: {sangnok3_corner2_lunch_act_txt[2:]}" if sangnok3_corner2_lunch_act_txt else None
-
-            to_food(3, today,
-                    sangnok3_corner2_lunch_time_el.get_text(strip=True) if sangnok3_corner2_lunch_time_el else None,
-                    sangnok3_corner2_name_el.get_text(strip=True) if sangnok3_corner2_name_el else None,
-                    sangnok3_corner2_lunch_act,
-                    sangnok3_corner2_lunch)
-
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(6) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            sangnok3_corner2_dinner, _ = find_food(base_css, 1)
-            sangnok3_corner2_dinner_time_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(6) > td:nth-of-type(1)')
-
-            sangnok3_corner2_dinner_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(6) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            )
-            sangnok3_corner2_dinner_act_txt = nth_text_of(sangnok3_corner2_dinner_act_el, _)
-            sangnok3_corner2_dinner_act = f"석식: {sangnok3_corner2_dinner_act_txt[2:]}" if sangnok3_corner2_dinner_act_txt else None
-
-            to_food(3, today,
-                    sangnok3_corner2_dinner_time_el.get_text(strip=True) if sangnok3_corner2_dinner_time_el else None,
-                    sangnok3_corner2_name_el.get_text(strip=True) if sangnok3_corner2_name_el else None,
-                    sangnok3_corner2_dinner_act,
-                    sangnok3_corner2_dinner)
-            
-            print('---------- SANGNOK2 ----------')
-            sangnok2_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(8) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(8) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok2_corner1_lunch, _ = find_food(base_css, 1)
-
-            sangnok2_corner1_lunch_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(8) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner1_lunch_act = nth_text_of(sangnok2_corner1_lunch_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner1_name_el.get_text(strip=True) if sangnok2_corner1_name_el else None,
-                    sangnok2_corner1_lunch_act,
-                    sangnok2_corner1_lunch)
-
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(9) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            sangnok2_corner1_dinner, _ = find_food(base_css, 1)
-
-            sangnok2_corner1_dinner_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(9) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner1_dinner_act = nth_text_of(sangnok2_corner1_dinner_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner1_name_el.get_text(strip=True) if sangnok2_corner1_name_el else None,
-                    sangnok2_corner1_dinner_act,
-                    sangnok2_corner1_dinner)
-            
-            sangnok2_corner2_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(10) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(10) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok2_corner2_lunch, _ = find_food(base_css, 1)
-
-            sangnok2_corner2_lunch_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(10) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner2_lunch_act = nth_text_of(sangnok2_corner2_lunch_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner2_name_el.get_text(strip=True) if sangnok2_corner2_name_el else None,
-                    sangnok2_corner2_lunch_act,
-                    sangnok2_corner2_lunch)
-            
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(11) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            sangnok2_corner2_dinner, _ = find_food(base_css, 1)
-
-            sangnok2_corner2_dinner_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(11) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner2_dinner_act = nth_text_of(sangnok2_corner2_dinner_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner2_name_el.get_text(strip=True) if sangnok2_corner2_name_el else None,
-                    sangnok2_corner2_dinner_act,
-                    sangnok2_corner2_dinner)
-
-            sangnok2_corner3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(12) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(12) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok2_corner3_lunch, _ = find_food(base_css, 1)
-
-            sangnok2_corner3_lunch_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(12) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner3_lunch_act = nth_text_of(sangnok2_corner3_lunch_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner3_name_el.get_text(strip=True) if sangnok2_corner3_name_el else None,
-                    sangnok2_corner3_lunch_act,
-                    sangnok2_corner3_lunch)
-            
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(13) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            sangnok2_corner3_dinner, _ = find_food(base_css, 1)
-
-            sangnok2_corner3_dinner_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(13) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner3_dinner_act = nth_text_of(sangnok2_corner3_dinner_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner3_name_el.get_text(strip=True) if sangnok2_corner3_name_el else None,
-                    sangnok2_corner3_dinner_act,
-                    sangnok2_corner3_dinner)
-
-            sangnok2_corner4_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(14) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(14) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok2_corner4_lunch, _ = find_food(base_css, 1)
-
-            sangnok2_corner4_lunch_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(14) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner4_lunch_act = nth_text_of(sangnok2_corner4_lunch_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner4_name_el.get_text(strip=True) if sangnok2_corner4_name_el else None,
-                    sangnok2_corner4_lunch_act,
-                    sangnok2_corner4_lunch)
-            
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(15) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            sangnok2_corner4_dinner, _ = find_food(base_css, 1)
-
-            sangnok2_corner4_dinner_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(15) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            )
-            sangnok2_corner4_dinner_act = nth_text_of(sangnok2_corner4_dinner_act_el, 1)
-
-            to_food(2, today, "중석식",
-                    sangnok2_corner4_name_el.get_text(strip=True) if sangnok2_corner4_name_el else None,
-                    sangnok2_corner4_dinner_act,
-                    sangnok2_corner4_dinner)
-
-            print('---------- SANGNOK1 ----------')
-            sangnok1_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(17) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(17) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok1_corner1, _ = find_food(base_css, 1)
-
-            sangnok1_corner1_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(17) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok1_corner1_act = nth_text_of(sangnok1_corner1_act_el, 1)
-
-            to_food(1, today, "중석식",
-                    sangnok1_corner1_name_el.get_text(strip=True) if sangnok1_corner1_name_el else None,
-                    sangnok1_corner1_act,
-                    sangnok1_corner1)
-
-            sangnok1_corner2_name_cell_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(18) > td:nth-of-type(2) > span:nth-of-type(1)')
-            sangnok1_corner2_name_txt = nth_text_of(sangnok1_corner2_name_cell_el, 1)
-            sangnok1_corner2_name = sangnok1_corner2_name_txt[4:-5] if sangnok1_corner2_name_txt else None
-
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(18) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok1_corner2, _ = find_food(base_css, 1)
-
-            sangnok1_corner2_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(18) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok1_corner2_act = nth_text_of(sangnok1_corner2_act_el, 1)
-
-            to_food(1, today, "중석식",
-                    sangnok1_corner2_name,
-                    sangnok1_corner2_act,
-                    sangnok1_corner2)
-
-            sangnok1_corner3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(19) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(19) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok1_corner3, _ = find_food(base_css, 1)
-
-            sangnok1_corner3_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(19) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok1_corner3_act = nth_text_of(sangnok1_corner3_act_el, 1)
-
-            to_food(1, today, "중석식",
-                    sangnok1_corner3_name_el.get_text(strip=True) if sangnok1_corner3_name_el else None,
-                    sangnok1_corner3_act,
-                    sangnok1_corner3)
-
-            sangnok1_corner4_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(20) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(20) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok1_corner4, _ = find_food(base_css, 1)
-
-            sangnok1_corner4_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(20) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok1_corner4_act = nth_text_of(sangnok1_corner4_act_el, 1)
-
-            to_food(1, today, "중석식",
-                    sangnok1_corner4_name_el.get_text(strip=True) if sangnok1_corner4_name_el else None,
-                    sangnok1_corner4_act,
-                    sangnok1_corner4)
-
-            sangnok1_corner5_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(21) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(21) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok1_corner5, _ = find_food(base_css, 1)
-
-            sangnok1_corner5_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(21) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok1_corner5_act = nth_text_of(sangnok1_corner5_act_el, 1)
-
-            to_food(1, today, "중석식",
-                    sangnok1_corner5_name_el.get_text(strip=True) if sangnok1_corner5_name_el else None,
-                    sangnok1_corner5_act,
-                    sangnok1_corner5)
-
-            sangnok1_corner6_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(22) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(22) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok1_corner6, _ = find_food(base_css, 1)
-
-            sangnok1_corner6_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(22) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok1_corner6_act = nth_text_of(sangnok1_corner6_act_el, 1)
-
-            to_food(1, today, "중석식",
-                    sangnok1_corner6_name_el.get_text(strip=True) if sangnok1_corner6_name_el else None,
-                    sangnok1_corner6_act,
-                    sangnok1_corner6)
-
-            sangnok1_corner7_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(23) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(23) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            sangnok1_corner7, _ = find_food(base_css, 1)
-
-            sangnok1_corner7_act_el = soup.select_one(
-                f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(23) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            )
-            sangnok1_corner7_act = nth_text_of(sangnok1_corner7_act_el, 1)
-
-            to_food(1, today, "중석식",
-                    sangnok1_corner7_name_el.get_text(strip=True) if sangnok1_corner7_name_el else None,
-                    sangnok1_corner7_act,
-                    sangnok1_corner7)
-
-            print('---------- KOYANG ----------')
-            koyang_corner1_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(25) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(25) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            koyang_corner1, _ = find_food(base_css, 1)
-            to_food(4, today, None,
-                    koyang_corner1_name_el.get_text(strip=True) if koyang_corner1_name_el else None,
-                    None, koyang_corner1)
-            
-            koyang_corner2_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(26) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(26) > td:nth-of-type({i+1}) > span:nth-of-type(1)'
-            koyang_corner2_lunch, _ = find_food(base_css, 1)
-            to_food(4, today, None,
-                    koyang_corner2_name_el.get_text(strip=True) if koyang_corner2_name_el else None,
-                    None, koyang_corner2_lunch)
-
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(27) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            koyang_corner2_dinner, _ = find_food(base_css, 1)
-            to_food(4, today, None,
-                    koyang_corner2_name_el.get_text(strip=True) if koyang_corner2_name_el else None,
-                    None, koyang_corner2_dinner)
-            
-            koyang_corner3_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(28) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(28) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            koyang_corner3, _ = find_food(base_css, 1)
-            to_food(4, today, None,
-                    koyang_corner3_name_el.get_text(strip=True) if koyang_corner3_name_el else None,
-                    None, koyang_corner3)
-
-            koyang_corner4_name_el = soup.select_one('#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(29) > td:nth-of-type(1)')
-            base_css = f'#sdetail > table:nth-of-type(2) > tbody > tr:nth-of-type(29) > td:nth-of-type({i}) > span:nth-of-type(1)'
-            koyang_corner4, _ = find_food(base_css, 1)
-            to_food(4, today, None,
-                    koyang_corner4_name_el.get_text(strip=True) if koyang_corner4_name_el else None,
-                    None, koyang_corner4)
 
             try:
-                response = requests.post(f"{API_HOST}/api/v1/menu/menus", json=foods, timeout=10)
-                if response.status_code == 200:
+                response = requests.post(f"{API_HOST}/api/v1/menu/allmenus", json=foods, timeout=10)
+                if response.status_code == 201:
                     print("Save to DB")
                 else:
                     print(f"API 에러 - 상태코드: {response.status_code}, 응답: {response.text}")
